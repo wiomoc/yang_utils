@@ -2,9 +2,9 @@ use crate::parser::lexer::{Lexer, Loc, Tok};
 
 #[derive(Debug)]
 pub(crate) struct Statement {
-    //pub(crate) keyword_loc: (Loc, Loc),
+    pub(crate) keyword_loc: (Loc, Loc),
     pub(crate) keyword: String,
-    //pub(crate) argument_loc: (Loc, Loc),
+    pub(crate) argument_loc: (Loc, Loc),
     pub(crate) argument: Option<String>,
     pub(crate) statements: Vec<Statement>,
 }
@@ -22,7 +22,7 @@ pub(crate) fn parse(input: &str) -> Result<Statement, ParseError> {
     if let Some(tok) = lexer.next() {
         return Err(ParseError {
             loc: Some(tok.0),
-            message: "Expected end of input, found ".to_string(),
+            message: format!("Expected end of input, found {:?}", tok.1),
         });
     }
 
@@ -49,10 +49,12 @@ fn parse_statement(
     first_tok: (usize, Tok, usize),
 ) -> Result<Statement, ParseError> {
     if let Tok::UString(keyword) = first_tok.1 {
+        let keyword_loc = (first_tok.0, first_tok.2);
         let mut argument: Option<String> = None;
         let mut statements: Vec<Statement> = vec![];
 
         let mut argument_or_statements = next_tok_or_err(lexer)?;
+        let argument_loc = (argument_or_statements.0, argument_or_statements.2);
         if let Tok::UString(arg) = argument_or_statements.1 {
             argument = Some(arg);
             argument_or_statements = next_tok_or_err(lexer)?;
@@ -95,7 +97,9 @@ fn parse_statement(
 
         Ok(Statement {
             keyword,
+            keyword_loc,
             argument,
+            argument_loc,
             statements,
         })
     } else {

@@ -1,131 +1,250 @@
-
 use crate::parser::parser::Statement;
+use crate::parser::lexer::Loc;
 
-type Result<T> = std::result::Result<T, String>;
+pub(crate) type Result<T> = std::result::Result<T, ()>;
 
-trait Mapper<T> {
-    fn map(statement: Statement) -> Result<T>;
+#[derive(Debug, Default)]
+pub struct ErrorContext {
+    errors: Vec<(Loc, String)>,
+    warnings: Vec<(Loc, String)>,
 }
 
-impl Mapper<String> for String {
-    fn map(statement: Statement) -> Result<String> {
-        if !statement.statements.is_empty() {
-            return Err("Expected string".to_string());
+impl ErrorContext {
+   pub(crate) fn new() -> Self {
+        Self::default()
+    }
+
+    pub(crate) fn add_error(&mut self, loc: Loc, error: String) {
+        self.errors.push((loc, error));
+    }
+
+    pub(crate) fn add_warning(&mut self, loc: Loc, warning: String) {
+        self.warnings.push((loc, warning));
+    }
+
+    pub fn print_errors(&self) {
+        for (loc, error) in &self.errors {
+            eprintln!("Error at {}: {}", loc, error);
         }
-        statement.argument.ok_or("Expected string".to_string())
+    }
+
+    pub fn print_warnings(&self) {
+        for (loc, warning) in &self.warnings {
+            eprintln!("Warning at {}: {}", loc, warning);
+        }
     }
 }
 
-macro_rules! module {
-    ($keyword:ident, $struc:ident,
-    $(argument: $argument:ident,)?
-    $(opt_argument: $opt_argument:ident,)?
+pub(crate) trait Mapper<T> {
+    fn map(statement: Statement, error_context: &mut ErrorContext) -> Result<T>;
+}
+
+pub(crate) trait ArgumentMapper<T> {
+    fn map_argument(argument: String, argument_loc: Loc, error_context: &mut ErrorContext) -> Result<T>;
+}
+
+impl ArgumentMapper<String> for String {
+    fn map_argument(argument: String, _argument_loc: Loc, _error_context: &mut ErrorContext) -> Result<String> {
+        Ok(argument)
+    }
+}
+
+
+impl Mapper<String> for String {
+    fn map(statement: Statement, error_context: &mut ErrorContext) -> Result<String> {
+        if !statement.statements.is_empty() {
+            error_context.add_warning(statement.keyword_loc.0, "Unexpected statements".to_string());
+        }
+        match statement.argument {
+            Some(arg) => Ok(arg),
+            None => {
+                error_context.add_error(statement.argument_loc.0, "Expected argument".to_string());
+                Err(())
+            },
+        }
+    }
+}
+
+macro_rules! prioritize_name {
+    ($ident:ident) => {
+        stringify!($ident)
+    };
+     ($name:literal, $ident:ident) => {
+        $name
+    };
+}
+
+macro_rules! model {
+    ($keyword:pat, $struc:ident,
+    $($argument_ident:ident : $(One<$argument_type_one:ty>)? $(Option<$argument_type_optional:ty>)?,)?
     {
         $(
-            $attribute_name:ident : $(One<$type_one:ident>)? $(Option<$type_optional:ident>)? $(Vec<$type_multiple:ident>)?
+            $attribute_ident:ident : $(One<$attribute_type_one:ident>)? $(Option<$attribute_type_optional:ident>)? $(Vec<$attribute_type_multiple:ident>)? $(=> $attribute_name:literal)?
         ),*
-    }) => {
+        $(,)?
+    }
+    ) => {
+         #[derive(Debug)]
          pub struct $struc {
             $(
-                $argument: String,
-            )?
-            $(
-                $opt_argument: Option<String>,
+                pub $argument_ident: $($argument_type_one)? $(Option<$argument_type_optional>)?,
             )?
             $(
                 $(
-                     pub $attribute_name: $type_one,
+                     pub $attribute_ident: $attribute_type_one,
                 )?
                 $(
-                     pub $attribute_name: Option<$type_optional>,
+                     pub $attribute_ident: Option<$attribute_type_optional>,
                 )?
                 $(
-                     pub $attribute_name: Vec<$type_multiple>,
+                     pub $attribute_ident: Vec<$attribute_type_multiple>,
                 )?
             )*
-        }
-        impl Mapper<$struc> for $struc {
-            fn $map(statement: Statement) -> Result<$struc> {
-                if statement.keyword.as_str() != stringify!($keyword) {
-                    return Err(format!("Expected {} keyword", stringify!($keyword)));
+         }
+        impl $crate::parser::model_mapper::Mapper<$struc> for $struc {
+            fn map(statement: $crate::parser::parser::Statement, error_context: &mut ErrorContext) -> $crate::parser::model_mapper::Result<$struc> {
+                if !matches!(statement.keyword.as_str(), $keyword) {
+                    error_context.add_error(statement.argument_loc.0, format!("Expected {} keyword", stringify!($keyword)));
+
+                    return Err(());
                 }
 
-                $(
-                    let $argument = statement.argument.ok_or(format!("Expected {} argument", stringify!($argument)))?;
-                )?
-
-                $(
-                    let $opt_argument = statement.argument;
-                )?
+                let mut error_occured = false;
 
                 $(
                     $(
-                        let mut $attribute_name: Option<$type_one> = None;
+                        let $argument_ident:Option<$argument_type_one> = if let Some(argument) = statement.argument {
+                            if let Ok(argument) = <$argument_type_one>::map_argument(
+                                argument,
+                                statement.argument_loc.0,
+                                error_context
+                            ) {
+                                Some(argument)
+                            } else {
+                                error_occured = true;
+                                None
+                            }
+                        } else {
+                            error_context.add_error(statement.argument_loc.0, format!("Expected {} argument", stringify!($argument_ident)));
+                            error_occured = true;
+                            None
+                        };
+                    )?
+
+                    $(
+                    let $argument_ident:Option<$argument_type_optional> = if let Some(argument) = statement.argument {
+                            if let Ok(argument) = <$argument_type_optional>::map_argument(
+                                argument,
+                                statement.argument_loc.0,
+                                error_context
+                            ) {
+                                Some(argument)
+                            } else {
+                                error_occured = true;
+                                None
+                            }
+                        } else {
+                            None
+                        };
+                    )?
+                )?
+
+                $(
+                    $(
+                        let mut $attribute_ident: Option<$attribute_type_one> = None;
                     )?
                     $(
-                        let mut $attribute_name: Option<$type_optional> = None;
+                        let mut $attribute_ident: Option<$attribute_type_optional> = None;
                     )?
                     $(
-                        let mut $attribute_name: Vec<$type_multiple> = Vec::new();
+                        let mut $attribute_ident: Vec<$attribute_type_multiple> = Vec::new();
                     )?
                 )*
 
                 for statement in statement.statements {
                     match statement.keyword.as_str() {
-                        $(stringify!($attribute_name) => {
+                        $($crate::parser::model_mapper::prioritize_name!($($attribute_name,)? $attribute_ident) => {
                             $(
-                                if $attribute_name.is_some() {
-                                    return Err(format!("Unexpected multiple {}", stringify!($attribute_name)));
+                                if $attribute_ident.is_some() {
+                                    error_context.add_error(statement.keyword_loc.0, format!("Unexpected multiple {}", stringify!($attribute_ident)));
+                                    error_occured = true;
+                                    continue;
                                 }
-                                let att: Option<$type_one> = $type_one::map(statement)?;
-                                $attribute_name = att;
+                                if let Ok(att) = $attribute_type_one::map(statement, error_context) {
+                                    $attribute_ident = Some(att);
+                                } else {
+                                    error_occured = true;
+                                }
                             )?
                             $(
-                                if $attribute_name.is_some() {
-                                    return Err(format!("Unexpected multiple {}", stringify!($attribute_name)));
+                                if $attribute_ident.is_some() {
+                                    error_context.add_error(statement.keyword_loc.0, format!("Unexpected multiple {}", stringify!($attribute_ident)));
+                                    error_occured = true;
+                                    continue;
                                 }
-                                let att: Option<$type_optional> = $type_optional::map(statement)?;
-                                $attribute_name = att;
+                                if let Ok(att) = $attribute_type_optional::map(statement, error_context) {
+                                    $attribute_ident = Some(att);
+                                } else {
+                                    error_occured = true;
+                                }
                             )?
                             $(
-                                let att: Option<$type_multiple> = $type_multiple::map(statement)?;
-                                $attribute_name.push(att);
+                                if let Ok(att) = $attribute_type_multiple::map(statement, error_context) {
+                                     $attribute_ident.push(att);
+                                } else {
+                                    error_occured = true;
+                                }
                             )?
                         }
                     )*
-                        _ => return Err(format!("Unexpected keyword: {}", statement.keyword)),
+                        _ => {
+                            error_context.add_warning(statement.keyword_loc.0, format!("Unexpected keyword {}", statement.keyword));
+                        }
                     }
                 }
 
                 $(
+                    let _att_name = $crate::parser::model_mapper::prioritize_name!($($attribute_name,)? $attribute_ident);
                     $(
-                        let $attribute_name: $type_one  = $attribute_name.ok_or(format!("Expected {} attribute", stringify!($attribute_name)))?;
+                        let _dummy: $attribute_type_one;
+                        if $attribute_ident.is_none() {
+                            error_context.add_error(statement.keyword_loc.0, format!("Expected {} attribute", _att_name));
+                            error_occured = true;
+                        }
                     )?
                 )*
 
-                let $keyword = $struc {
+                if error_occured {
+                    return Err(());
+                }
+
+                $(
                     $(
-                        $argument,
+                        let $argument_ident:$argument_type_one = $argument_ident.unwrap();
+                     )?
+                )?
+
+                $(
+                    $(
+                        let $attribute_ident: $attribute_type_one = $attribute_ident.unwrap();
+                    )?
+                )*
+
+
+                let inst = $struc {
+                    $(
+                        $argument_ident,
                     )?
                     $(
-                        $opt_argument,
-                    )?
-                    $(
-                        $attribute_name
+                        $attribute_ident
                     ),*
+
                 };
-                Ok($keyword)
+                Ok(inst)
             }
         }
     };
 }
 
-module! {
-    import, Import,
-    opt_argument: module,
-    {
-        description: Option<String>,
-        prefix: One<String>,
-        reference: Vec<String>
-    }
-}
+pub(crate) use model;
+pub(crate) use prioritize_name;

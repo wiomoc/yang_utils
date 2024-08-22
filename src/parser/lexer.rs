@@ -99,6 +99,7 @@ impl<'input> Lexer<'input> {
                     if ch.ch().is_ascii_alphanumeric()
                         || ch.ch() == '_'
                         || ch.ch() == '.'
+                        || ch.ch() == ':'
                         || ch.ch() == '-' =>
                 {
                     self.pop();
@@ -187,7 +188,7 @@ impl<'input> Iterator for Lexer<'input> {
     fn next(&mut self) -> Option<Self::Item> {
         while let Some(next_char) = self.pop() {
             return Some(match next_char.ch() {
-                ch if ch.is_ascii_alphabetic() || ch == '_' => {
+                ch if ch.is_ascii_alphanumeric() || ch == '_' => {
                     return Some(self.consume_unquoted_string(next_char));
                 }
                 ch if ch.is_whitespace() => continue,
