@@ -1,17 +1,17 @@
-use crate::parser::lexer::{Lexer, Loc, Tok};
+use crate::parser::lexer::{Lexer, Span, Tok};
 
 #[derive(Debug)]
 pub(crate) struct Statement {
-    pub(crate) keyword_loc: (Loc, Loc),
+    pub(crate) keyword_span: Span,
     pub(crate) keyword: String,
-    pub(crate) argument_loc: (Loc, Loc),
+    pub(crate) argument_span: Span,
     pub(crate) argument: Option<String>,
     pub(crate) statements: Vec<Statement>,
 }
 
 #[derive(Debug)]
 pub struct ParseError {
-    pub loc: Option<usize>,
+    pub span: Option<Span>,
     pub message: String,
 }
 
@@ -21,7 +21,7 @@ pub(crate) fn parse(input: &str) -> Result<Statement, ParseError> {
     let statement = parse_statement(&mut lexer, first_tok)?;
     if let Some(tok) = lexer.next() {
         return Err(ParseError {
-            loc: Some(tok.0),
+            span: Some(tok.0),
             message: format!("Expected end of input, found {:?}", tok.1),
         });
     }
@@ -29,32 +29,32 @@ pub(crate) fn parse(input: &str) -> Result<Statement, ParseError> {
     Ok(statement)
 }
 
-fn next_tok_or_err(lexer: &mut Lexer) -> Result<(usize, Tok, usize), ParseError> {
+fn next_tok_or_err(lexer: &mut Lexer) -> Result<(Span, Tok), ParseError> {
     let tok = lexer.next().ok_or_else(|| ParseError {
-        loc: None,
+        span: None,
         message: "Expected token, found end of input".to_string(),
     })?;
 
     match tok.1 {
         Err(err) => Err(ParseError {
-            loc: Some(tok.0),
+            span: Some(tok.0),
             message: format!("{:?}", err),
         }),
-        Ok(token) => Ok((tok.0, token, tok.2)),
+        Ok(token) => Ok((tok.0, token)),
     }
 }
 
 fn parse_statement(
     lexer: &mut Lexer,
-    first_tok: (usize, Tok, usize),
+    first_tok: (Span, Tok),
 ) -> Result<Statement, ParseError> {
     if let Tok::UString(keyword) = first_tok.1 {
-        let keyword_loc = (first_tok.0, first_tok.2);
+        let keyword_span = first_tok.0;
         let mut argument: Option<String> = None;
         let mut statements: Vec<Statement> = vec![];
 
         let mut argument_or_statements = next_tok_or_err(lexer)?;
-        let argument_loc = (argument_or_statements.0, argument_or_statements.2);
+        let argument_span = argument_or_statements.0;
         if let Tok::UString(arg) = argument_or_statements.1 {
             argument = Some(arg);
             argument_or_statements = next_tok_or_err(lexer)?;
@@ -68,7 +68,7 @@ fn parse_statement(
                         arg_joined += &arg;
                     } else {
                         return Err(ParseError {
-                            loc: Some(next_tok.0),
+                            span: Some(next_tok.0),
                             message: "Expected string, found something else".to_string(),
                         });
                     }
@@ -90,21 +90,21 @@ fn parse_statement(
             }
         } else {
             return Err(ParseError {
-                loc: Some(argument_or_statements.0),
+                span: Some(argument_or_statements.0),
                 message: "Expected semicolon or left brace, found something else".to_string(),
             });
         }
 
         Ok(Statement {
             keyword,
-            keyword_loc,
+            keyword_span,
             argument,
-            argument_loc,
+            argument_span,
             statements,
         })
     } else {
         Err(ParseError {
-            loc: Some(first_tok.0),
+            span: Some(first_tok.0),
             message: "Expected keyword, found something else".to_string(),
         })
     }

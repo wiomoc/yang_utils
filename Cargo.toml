@@ -1,0 +1,7 @@
+[package]
+name = "yang-utils"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+highlight_error = "0.1.1"

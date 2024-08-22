@@ -1,7 +1,7 @@
 use crate::parser::model_mapper::{model, ArgumentMapper, ErrorContext, Mapper};
 use crate::parser::parser::Statement;
 use std::str::FromStr;
-use crate::parser::lexer::Loc;
+use crate::parser::lexer::{Loc, Span};
 
 #[derive(Debug)]
 pub enum Status {
@@ -15,7 +15,7 @@ impl Mapper<Status> for Status {
         let argument = match statement.argument.as_ref() {
             Some(argument) => argument,
             None => {
-                error_context.add_error(statement.argument_loc.0, "Expected status".to_string());
+                error_context.add_error(statement.argument_span, "Expected status".to_string());
                 return Err(());
             }
         };
@@ -24,7 +24,7 @@ impl Mapper<Status> for Status {
             "deprecated" => Ok(Status::Deprecated),
             "obsolete" => Ok(Status::Obsolete),
             _ => {
-                error_context.add_error(statement.argument_loc.0, "Invalid status".to_string());
+                error_context.add_error(statement.argument_span, "Invalid status".to_string());
                 Err(())
             }
         }
@@ -36,7 +36,7 @@ impl Mapper<bool> for bool {
         let argument = match statement.argument.as_ref() {
             Some(argument) => argument,
             None => {
-                error_context.add_error(statement.argument_loc.0, "Expected bool".to_string());
+                error_context.add_error(statement.argument_span, "Expected bool".to_string());
                 return Err(());
             }
         };
@@ -44,7 +44,7 @@ impl Mapper<bool> for bool {
             "true" => Ok(true),
             "false" => Ok(false),
             _ => {
-                error_context.add_error(statement.argument_loc.0, "Invalid boolean".to_string());
+                error_context.add_error(statement.argument_span, "Invalid boolean".to_string());
                 Err(())
             }
         }
@@ -56,14 +56,14 @@ impl Mapper<u32> for u32 {
         let argument = match statement.argument.as_ref() {
             Some(argument) => argument,
             None => {
-                error_context.add_error(statement.argument_loc.0, "Expected u32".to_string());
+                error_context.add_error(statement.argument_span, "Expected u32".to_string());
                 return Err(());
             }
         };
         match argument.parse() {
             Ok(value) => Ok(value),
             Err(_) => {
-                error_context.add_error(statement.argument_loc.0, "Invalid u32".to_string());
+                error_context.add_error(statement.argument_span, "Invalid u32".to_string());
                 Err(())
             }
         }
@@ -75,14 +75,14 @@ impl Mapper<i32> for i32 {
         let argument = match statement.argument.as_ref() {
             Some(argument) => argument,
             None => {
-                error_context.add_error(statement.argument_loc.0, "Expected i32".to_string());
+                error_context.add_error(statement.argument_span, "Expected i32".to_string());
                 return Err(());
             }
         };
         match argument.parse() {
             Ok(value) => Ok(value),
             Err(_) => {
-                error_context.add_error(statement.argument_loc.0, "Invalid i32".to_string());
+                error_context.add_error(statement.argument_span, "Invalid i32".to_string());
                 Err(())
             }
         }
@@ -209,7 +209,7 @@ pub struct LengthRangePattern<T: FromStr<Err = String>>(Vec<LengthRangePatternPa
 impl<T: FromStr<Err = String>> ArgumentMapper<LengthRangePattern<T>> for LengthRangePattern<T> {
     fn map_argument(
         argument: String,
-        argument_loc: Loc,
+        argument_span: Span,
         error_context: &mut ErrorContext,
     ) -> crate::parser::model_mapper::Result<LengthRangePattern<T>> {
         let parts = argument
@@ -220,13 +220,13 @@ impl<T: FromStr<Err = String>> ArgumentMapper<LengthRangePattern<T>> for LengthR
                     .map(|t| t.trim())
                     .collect::<Vec<_>>();
                 if part_tokens.len() != 1 && part_tokens.len() != 2 {
-                    error_context.add_error(argument_loc, "Invalid pattern part".to_string());
+                    error_context.add_error(argument_span, "Invalid pattern part".to_string());
                     return Err(());
                 }
                 let lower_boundary = match T::from_str(part_tokens[0]) {
                     Ok(boundary) => boundary,
                     Err(e) => {
-                        error_context.add_error(argument_loc, e);
+                        error_context.add_error(argument_span, e);
                         return Err(());
                     }
                 };
@@ -234,7 +234,7 @@ impl<T: FromStr<Err = String>> ArgumentMapper<LengthRangePattern<T>> for LengthR
                     Some(match T::from_str(part_tokens[1]) {
                         Ok(boundary) => boundary,
                         Err(e) => {
-                            error_context.add_error(argument_loc, e);
+                            error_context.add_error(argument_span, e);
                             return Err(());
                         }
                     })
@@ -248,7 +248,7 @@ impl<T: FromStr<Err = String>> ArgumentMapper<LengthRangePattern<T>> for LengthR
             })
             .collect::<crate::parser::model_mapper::Result<Vec<LengthRangePatternPart<T>>>>()?;
         if parts.is_empty() {
-            error_context.add_error(argument_loc, "Invalid length pattern".to_string());
+            error_context.add_error(argument_span, "Invalid length pattern".to_string());
             return Err(());
         }
         Ok(LengthRangePattern(parts))
@@ -628,7 +628,7 @@ pub enum DeviateAspect {
 impl ArgumentMapper<DeviateAspect> for DeviateAspect {
     fn map_argument(
         argument: String,
-        argument_loc: Loc,
+        argument_span: Span,
         error_context: &mut ErrorContext,
     ) -> crate::parser::model_mapper::Result<DeviateAspect> {
         match argument.as_str() {
@@ -637,7 +637,7 @@ impl ArgumentMapper<DeviateAspect> for DeviateAspect {
             "replace" => Ok(DeviateAspect::Replace),
             "delete" => Ok(DeviateAspect::Delete),
             _ => {
-                error_context.add_error(argument_loc, "Invalid deviate aspect".to_string());
+                error_context.add_error(argument_span, "Invalid deviate aspect".to_string());
                 Err(())
             }
         }
@@ -773,14 +773,14 @@ mod tests {
                      key "name";
                      leaf name {
                          type string {
-                             length "11 | 42..max"; // 11 | 42..255
+                             length "11t | 42..max"; // 11 | 42..255
                          }
                      }
                      leaf full-name {
                          type string;
                      }
                      leaf class {
-                         type string;
+                         typge string;
                      }
                  }
              }
@@ -790,7 +790,7 @@ mod tests {
         let statement = parse(input).unwrap();
         let mut error_context = ErrorContext::new();
         let module = Module::map(statement, &mut error_context);
-        error_context.print_errors();
+        error_context.print(input);
         print!("{:?}", module.unwrap());
     }
 }

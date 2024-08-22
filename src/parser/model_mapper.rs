@@ -1,12 +1,13 @@
+use crate::parser::lexer::Span;
 use crate::parser::parser::Statement;
-use crate::parser::lexer::Loc;
+use highlight_error;
 
 pub(crate) type Result<T> = std::result::Result<T, ()>;
 
 #[derive(Debug, Default)]
 pub struct ErrorContext {
-    errors: Vec<(Loc, String)>,
-    warnings: Vec<(Loc, String)>,
+    errors: Vec<(Span, String)>,
+    warnings: Vec<(Span, String)>,
 }
 
 impl ErrorContext {
@@ -14,23 +15,21 @@ impl ErrorContext {
         Self::default()
     }
 
-    pub(crate) fn add_error(&mut self, loc: Loc, error: String) {
+    pub(crate) fn add_error(&mut self, loc: Span, error: String) {
         self.errors.push((loc, error));
     }
 
-    pub(crate) fn add_warning(&mut self, loc: Loc, warning: String) {
+    pub(crate) fn add_warning(&mut self, loc: Span, warning: String) {
         self.warnings.push((loc, warning));
     }
 
-    pub fn print_errors(&self) {
-        for (loc, error) in &self.errors {
-            eprintln!("Error at {}: {}", loc, error);
-        }
+    pub(crate) fn sort_errors(&mut self)  {
+        self.errors.sort_by_key(|(loc, _)| *loc);
     }
 
-    pub fn print_warnings(&self) {
-        for (loc, warning) in &self.warnings {
-            eprintln!("Warning at {}: {}", loc, warning);
+    pub fn print(&self, source: &str) {
+        for (span, error) in &self.errors {
+           eprintln!("{}\n{}", highlight_error::highlight_error(span.0, span.1, source), error);
         }
     }
 }
@@ -40,11 +39,11 @@ pub(crate) trait Mapper<T> {
 }
 
 pub(crate) trait ArgumentMapper<T> {
-    fn map_argument(argument: String, argument_loc: Loc, error_context: &mut ErrorContext) -> Result<T>;
+    fn map_argument(argument: String, argument_span: Span, error_context: &mut ErrorContext) -> Result<T>;
 }
 
 impl ArgumentMapper<String> for String {
-    fn map_argument(argument: String, _argument_loc: Loc, _error_context: &mut ErrorContext) -> Result<String> {
+    fn map_argument(argument: String, _argument_span: Span, _error_context: &mut ErrorContext) -> Result<String> {
         Ok(argument)
     }
 }
@@ -53,12 +52,12 @@ impl ArgumentMapper<String> for String {
 impl Mapper<String> for String {
     fn map(statement: Statement, error_context: &mut ErrorContext) -> Result<String> {
         if !statement.statements.is_empty() {
-            error_context.add_warning(statement.keyword_loc.0, "Unexpected statements".to_string());
+            error_context.add_warning(statement.keyword_span, "Unexpected statements".to_string());
         }
         match statement.argument {
             Some(arg) => Ok(arg),
             None => {
-                error_context.add_error(statement.argument_loc.0, "Expected argument".to_string());
+                error_context.add_error(statement.argument_span, "Expected argument".to_string());
                 Err(())
             },
         }
@@ -104,7 +103,7 @@ macro_rules! model {
         impl $crate::parser::model_mapper::Mapper<$struc> for $struc {
             fn map(statement: $crate::parser::parser::Statement, error_context: &mut ErrorContext) -> $crate::parser::model_mapper::Result<$struc> {
                 if !matches!(statement.keyword.as_str(), $keyword) {
-                    error_context.add_error(statement.argument_loc.0, format!("Expected {} keyword", stringify!($keyword)));
+                    error_context.add_error(statement.argument_span, format!("Expected {} keyword", stringify!($keyword)));
 
                     return Err(());
                 }
@@ -116,7 +115,7 @@ macro_rules! model {
                         let $argument_ident:Option<$argument_type_one> = if let Some(argument) = statement.argument {
                             if let Ok(argument) = <$argument_type_one>::map_argument(
                                 argument,
-                                statement.argument_loc.0,
+                                statement.argument_span,
                                 error_context
                             ) {
                                 Some(argument)
@@ -125,7 +124,7 @@ macro_rules! model {
                                 None
                             }
                         } else {
-                            error_context.add_error(statement.argument_loc.0, format!("Expected {} argument", stringify!($argument_ident)));
+                            error_context.add_error(statement.argument_span, format!("Expected {} argument", stringify!($argument_ident)));
                             error_occured = true;
                             None
                         };
@@ -135,7 +134,7 @@ macro_rules! model {
                     let $argument_ident:Option<$argument_type_optional> = if let Some(argument) = statement.argument {
                             if let Ok(argument) = <$argument_type_optional>::map_argument(
                                 argument,
-                                statement.argument_loc.0,
+                                statement.argument_span,
                                 error_context
                             ) {
                                 Some(argument)
@@ -166,7 +165,7 @@ macro_rules! model {
                         $($crate::parser::model_mapper::prioritize_name!($($attribute_name,)? $attribute_ident) => {
                             $(
                                 if $attribute_ident.is_some() {
-                                    error_context.add_error(statement.keyword_loc.0, format!("Unexpected multiple {}", stringify!($attribute_ident)));
+                                    error_context.add_error(statement.keyword_span, format!("Unexpected multiple {}", stringify!($attribute_ident)));
                                     error_occured = true;
                                     continue;
                                 }
@@ -178,7 +177,7 @@ macro_rules! model {
                             )?
                             $(
                                 if $attribute_ident.is_some() {
-                                    error_context.add_error(statement.keyword_loc.0, format!("Unexpected multiple {}", stringify!($attribute_ident)));
+                                    error_context.add_error(statement.keyword_span, format!("Unexpected multiple {}", stringify!($attribute_ident)));
                                     error_occured = true;
                                     continue;
                                 }
@@ -198,7 +197,7 @@ macro_rules! model {
                         }
                     )*
                         _ => {
-                            error_context.add_warning(statement.keyword_loc.0, format!("Unexpected keyword {}", statement.keyword));
+                            error_context.add_warning(statement.keyword_span, format!("Unexpected keyword {}", statement.keyword));
                         }
                     }
                 }
@@ -208,7 +207,7 @@ macro_rules! model {
                     $(
                         let _dummy: $attribute_type_one;
                         if $attribute_ident.is_none() {
-                            error_context.add_error(statement.keyword_loc.0, format!("Expected {} attribute", _att_name));
+                            error_context.add_error(statement.keyword_span, format!("Expected {} attribute", _att_name));
                             error_occured = true;
                         }
                     )?

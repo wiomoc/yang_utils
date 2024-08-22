@@ -2,7 +2,8 @@ use std::iter::Peekable;
 use std::{iter::FromIterator, str::CharIndices};
 
 pub type Loc = usize;
-pub type SpannedTok = (Loc, Result<Tok, LexicalError>, Loc);
+pub type Span = (Loc, Loc);
+pub type SpannedTok = (Span, Result<Tok, LexicalError>);
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Tok {
@@ -111,9 +112,8 @@ impl<'input> Lexer<'input> {
         }
 
         (
-            first_char.0,
+            (first_char.0, last_pos + 1),
             Ok(Tok::UString(String::from_iter(string_content))),
-            last_pos + 1,
         )
     }
 
@@ -127,14 +127,13 @@ impl<'input> Lexer<'input> {
             let ch = if let Ok(ch) = ch {
                 ch
             } else {
-                return (starting_pos, Err(LexicalError::UnexpectedEOF), loc);
+                return ((starting_pos, loc), Err(LexicalError::UnexpectedEOF));
             };
             match ch.ch() {
                 '\'' if !is_double_quoted => {
                     return (
-                        starting_pos,
+                        (starting_pos, ch.loc() + 1),
                         Ok(Tok::QString(String::from_iter(string_content))),
-                        ch.loc() + 1,
                     );
                 }
                 '"' if is_double_quoted => {
@@ -163,16 +162,15 @@ impl<'input> Lexer<'input> {
                         .join("\n");
 
                     return (
-                        starting_pos,
+                        (starting_pos, ch.loc() + 1),
                         Ok(Tok::QString(trimmed_string_content)),
-                        ch.loc() + 1,
                     );
                 }
                 '\\' => {
                     let escaped_char = if let Ok(ch) = self.consume_escaped_char() {
                         ch
                     } else {
-                        return (starting_pos, Err(LexicalError::IllegalStringEscape), loc);
+                        return ((starting_pos, loc), Err(LexicalError::IllegalStringEscape));
                     };
                     string_content.push(escaped_char)
                 },
@@ -196,22 +194,21 @@ impl<'input> Iterator for Lexer<'input> {
                     let loc = next_char.loc();
                     let next_char = self.pop();
                     if next_char.map(|c| c.ch()) != Some('/') {
-                        return Some((loc, Err(LexicalError::IllegalToken), loc + 2));
+                        return Some(((loc, loc + 2), Err(LexicalError::IllegalToken)));
                     }
                     self.consume_linecomment();
                     continue;
                 }
                 '"' => return Some(self.consume_quoted_string(next_char.loc(), true)),
                 '\'' => return Some(self.consume_quoted_string(next_char.loc(), false)),
-                ';' => (next_char.loc(), Ok(Tok::Semicolon), next_char.loc() + 1),
-                '+' => (next_char.loc(), Ok(Tok::Plus), next_char.loc() + 1),
-                '{' => (next_char.loc(), Ok(Tok::LBrace), next_char.loc() + 1),
-                '}' => (next_char.loc(), Ok(Tok::RBrace), next_char.loc() + 1),
+                ';' => ((next_char.loc(), next_char.loc() + 1), Ok(Tok::Semicolon)),
+                '+' => ((next_char.loc(), next_char.loc() + 1), Ok(Tok::Plus)),
+                '{' => ((next_char.loc(), next_char.loc() + 1), Ok(Tok::LBrace)),
+                '}' => ((next_char.loc(), next_char.loc() + 1), Ok(Tok::RBrace)),
                 _ => {
                     return Some((
-                        next_char.0,
+                       (next_char.loc(), next_char.loc() + 1),
                         Err(LexicalError::IllegalToken),
-                        next_char.0 + 1,
                     ))
                 }
             });
@@ -232,7 +229,7 @@ mod tests {
         let mut lexer = Lexer::new(input);
 
         for expected_token in expected_tokens {
-            let (loc, actual_token, end_loc) = lexer.next().unwrap();
+            let ((loc, end_loc), actual_token, ) = lexer.next().unwrap();
             assert_eq!((loc, actual_token.unwrap(), end_loc), expected_token);
         }
 
