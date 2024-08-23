@@ -1,35 +1,52 @@
+use std::sync::Arc;
 use crate::parser::lexer::Span;
 use crate::parser::parser::Statement;
-use highlight_error;
+use miette::{LabeledSpan, MietteDiagnostic, Report, Severity};
 
 pub(crate) type Result<T> = std::result::Result<T, ()>;
 
 #[derive(Debug, Default)]
 pub struct ErrorContext {
-    errors: Vec<(Span, String)>,
-    warnings: Vec<(Span, String)>,
+    diagnostics: Vec<MietteDiagnostic>,
 }
 
 impl ErrorContext {
-   pub(crate) fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self::default()
     }
 
+    pub(crate) fn add_diagnostics(&mut self, loc: Span, message: String, severity: Severity) {
+        self.diagnostics.push(MietteDiagnostic {
+            labels: Some(vec![LabeledSpan::new_primary_with_span(
+                None,
+                (loc.0..loc.1),
+            )]),
+            severity: Some(severity),
+            code: None,
+            help: None,
+            message,
+            url: None,
+        });
+    }
+
     pub(crate) fn add_error(&mut self, loc: Span, error: String) {
-        self.errors.push((loc, error));
+       self.add_diagnostics(loc, error, Severity::Error);
     }
 
     pub(crate) fn add_warning(&mut self, loc: Span, warning: String) {
-        self.warnings.push((loc, warning));
+        self.add_diagnostics(loc, warning, Severity::Warning);
     }
 
-    pub(crate) fn sort_errors(&mut self)  {
-        self.errors.sort_by_key(|(loc, _)| *loc);
+    pub(crate) fn sort_errors(&mut self) {
+        self.diagnostics
+            .sort_by_key(|d| d.labels.as_ref().unwrap()[0].offset());
     }
 
     pub fn print(&self, source: &str) {
-        for (span, error) in &self.errors {
-           eprintln!("{}\n{}", highlight_error::highlight_error(span.0, span.1, source), error);
+        let source = Arc::new(source.to_string());
+        for diag in &self.diagnostics {
+            let report = Report::new(diag.clone()).with_source_code(source.clone());
+            println!("{:?}", report);
         }
     }
 }
@@ -39,15 +56,22 @@ pub(crate) trait Mapper<T> {
 }
 
 pub(crate) trait ArgumentMapper<T> {
-    fn map_argument(argument: String, argument_span: Span, error_context: &mut ErrorContext) -> Result<T>;
+    fn map_argument(
+        argument: String,
+        argument_span: Span,
+        error_context: &mut ErrorContext,
+    ) -> Result<T>;
 }
 
 impl ArgumentMapper<String> for String {
-    fn map_argument(argument: String, _argument_span: Span, _error_context: &mut ErrorContext) -> Result<String> {
+    fn map_argument(
+        argument: String,
+        _argument_span: Span,
+        _error_context: &mut ErrorContext,
+    ) -> Result<String> {
         Ok(argument)
     }
 }
-
 
 impl Mapper<String> for String {
     fn map(statement: Statement, error_context: &mut ErrorContext) -> Result<String> {
@@ -59,7 +83,7 @@ impl Mapper<String> for String {
             None => {
                 error_context.add_error(statement.argument_span, "Expected argument".to_string());
                 Err(())
-            },
+            }
         }
     }
 }
@@ -68,7 +92,7 @@ macro_rules! prioritize_name {
     ($ident:ident) => {
         stringify!($ident)
     };
-     ($name:literal, $ident:ident) => {
+    ($name:literal, $ident:ident) => {
         $name
     };
 }

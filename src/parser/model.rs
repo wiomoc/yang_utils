@@ -296,7 +296,7 @@ model! {
         base: Option<String>,
         bit: Vec<Bit>,
         r#enum: Vec<Enum> => "enum",
-        fraction_digits: Option<u32>,
+        fraction_digits: Option<u32> => "fraction-digits",
         length: Option<Length>,
         path: Option<String>,
         pattern: Vec<Pattern>,
@@ -673,7 +673,7 @@ model!(
         description: Option<String>,
         reference: Option<String>,
 
-        revision: Option<Revision>,
+        revision: Vec<Revision>,
 
         namespace: One<String>,
         prefix: One<String>,
@@ -709,7 +709,7 @@ model!(
         description: Option<String>,
         reference: Option<String>,
 
-        revision: Option<Revision>,
+        revision: Vec<Revision>,
         belongs_to: One<BelongsTo> => "belongs-to",
 
         anydata: Vec<AnyDataOrXml>,
@@ -780,7 +780,7 @@ mod tests {
                          type string;
                      }
                      leaf class {
-                         typge string;
+                         type string;
                      }
                  }
              }
