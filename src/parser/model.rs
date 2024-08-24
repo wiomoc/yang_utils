@@ -1,7 +1,8 @@
-use crate::parser::model_mapper::{model, ArgumentMapper, ErrorContext, Mapper};
+use crate::parser::model_mapper::{model, ArgumentMapper, Mapper};
 use crate::parser::parser::Statement;
 use std::str::FromStr;
-use crate::parser::lexer::{Loc, Span};
+use crate::errors::ErrorContext;
+use crate::Span;
 
 #[derive(Debug)]
 pub enum Status {
@@ -151,7 +152,7 @@ model! {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub enum LengthBoundary {
     Min,
     Max,
@@ -173,7 +174,7 @@ impl FromStr for LengthBoundary {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub enum RangeBoundary {
     Min,
     Max,
@@ -199,12 +200,12 @@ impl FromStr for RangeBoundary {
 
 #[derive(Debug)]
 pub struct LengthRangePatternPart<T> {
-    lower_boundary: T,
-    upper_boundary: Option<T>,
+    pub lower_boundary: T,
+    pub upper_boundary: Option<T>,
 }
 
 #[derive(Debug)]
-pub struct LengthRangePattern<T: FromStr<Err = String>>(Vec<LengthRangePatternPart<T>>);
+pub struct LengthRangePattern<T: FromStr<Err = String>>(pub Vec<LengthRangePatternPart<T>>);
 
 impl<T: FromStr<Err = String>> ArgumentMapper<LengthRangePattern<T>> for LengthRangePattern<T> {
     fn map_argument(
@@ -280,7 +281,7 @@ model! {
 
 model! {
     "range", Range,
-    range_expression: One<String>,
+    range_expression: One<LengthRangePattern<RangeBoundary>>,
     {
         description: Option<String>,
         error_app_tag: Option<String> => "error-app-tag",
@@ -298,6 +299,7 @@ model! {
         r#enum: Vec<Enum> => "enum",
         fraction_digits: Option<u32> => "fraction-digits",
         length: Option<Length>,
+        range: Option<Range>,
         path: Option<String>,
         pattern: Vec<Pattern>,
         require_instance: Option<bool> => "require-instance",

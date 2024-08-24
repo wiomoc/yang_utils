@@ -1,4 +1,9 @@
 mod parser;
+mod typing;
+mod errors;
+
+pub type Loc = usize;
+pub type Span = (Loc, Loc);
 
 pub fn add(left: u64, right: u64) -> u64 {
     left + right

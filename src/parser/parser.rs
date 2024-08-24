@@ -1,4 +1,5 @@
-use crate::parser::lexer::{Lexer, Span, Tok};
+use crate::parser::lexer::{Lexer, Tok};
+use crate::Span;
 
 #[derive(Debug)]
 pub(crate) struct Statement {

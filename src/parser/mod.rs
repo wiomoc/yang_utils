@@ -1,4 +1,4 @@
 mod lexer;
 mod parser;
-mod model;
+pub(crate) mod model;
 mod model_mapper;

@@ -1,8 +1,7 @@
 use std::iter::Peekable;
 use std::{iter::FromIterator, str::CharIndices};
+use crate::{Loc, Span};
 
-pub type Loc = usize;
-pub type Span = (Loc, Loc);
 pub type SpannedTok = (Span, Result<Tok, LexicalError>);
 
 #[derive(Debug, Clone, PartialEq)]
